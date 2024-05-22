@@ -18,16 +18,20 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
+	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -1448,6 +1452,10 @@ func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types
 // This function expects the chain mutex to be held.
 func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
 	for _, tx := range block.Transactions() {
+		toAddress := tx.To()
+		if toAddress != nil {
+			DecodeTransactionInputData(toAddress, tx.Data())
+		}
 		fmt.Printf("Transaction input data: %x\n  tx addr %s\n", tx.Data(), tx.To())
 	}
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
@@ -2465,4 +2473,107 @@ func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
 // GetTrieFlushInterval gets the in-memory tries flushAlloc interval
 func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
+}
+
+func DecodeTransactionInputData(addr *common.Address, data []byte) {
+
+	if addr == nil {
+		fmt.Println("Invalid TX")
+		return
+	}
+
+	// Get the file path from the environment variable
+	abiPath := os.Getenv("ABI_FILE_PATH")
+	if abiPath == "" {
+		fmt.Println("ABI_FILE_PATH environment variable is not set")
+		return
+	}
+	reader, err := os.Open(abiPath)
+	if err != nil {
+		fmt.Println("Error opening ABI file:", err)
+		return
+	}
+	contractABI, err := abi.JSON(reader)
+	if err != nil {
+		fmt.Println("Error decoding ABI:", err)
+		return
+	}
+
+	if len(data) >= 4 && bytes.Equal(data[:4], []byte{0x02, 0xfe, 0x53, 0x05}) {
+
+		methodSigData := data[:4]
+
+		method, err := contractABI.MethodById(methodSigData)
+		if err != nil {
+			return
+		}
+		inputsSigData := data[4:]
+
+		inputsMap := make(map[string]interface{})
+		method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
+
+		fmt.Printf("Method Name: %s\n", method.Name)
+		fmt.Printf("URI: %v\n", inputsMap["newuri"])
+
+		sendURI(*addr, method.Name, inputsMap["newuri"].(string))
+
+	} else if len(data) >= 4 && bytes.Equal(data[:4], []byte{0xd2, 0x04, 0xc4, 0x5e}) {
+		methodSigData := data[:4]
+
+		method, err := contractABI.MethodById(methodSigData)
+		if err != nil {
+			return
+		}
+		inputsSigData := data[4:]
+
+		inputsMap := make(map[string]interface{})
+		method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
+
+		fmt.Printf("Method Name: %s\n", method.Name)
+		fmt.Printf("URI: %v\n", inputsMap["uri"])
+
+		sendURI(*addr, method.Name, inputsMap["uri"].(string))
+	} else if len(data) >= 4 && bytes.Equal(data[:4], []byte{0xcd, 0x27, 0x9c, 0x7c}) {
+		methodSigData := data[:4]
+
+		method, err := contractABI.MethodById(methodSigData)
+		if err != nil {
+			return
+		}
+		inputsSigData := data[4:]
+
+		inputsMap := make(map[string]interface{})
+		method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
+
+		fmt.Printf("Method Name: %s\n", method.Name)
+
+		fmt.Printf("tokenID: %v\n", inputsMap["tokenId"])
+		fmt.Printf("URI: %v\n", inputsMap["uri"])
+
+		sendURI(*addr, method.Name, inputsMap["uri"].(string))
+	}
+}
+
+func sendURI(addr common.Address, method string, uri string) {
+
+	payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"geth"}`, addr, uri, method)
+	uriEndpoint := os.Getenv("URI_ENDPOINT")
+	// if uriEndpoint == "" {
+	// 	fmt.Println("URI_ENDPOINT environment variable is not set")
+	// 	return
+	// }
+	fmt.Println("payload non byte", payload)
+	fmt.Println("payload data", bytes.NewBuffer([]byte(payload)))
+	_, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
+	if err != nil {
+		return
+	}
+	// if err != nil {
+	// 	fmt.Println("Error:", err)
+	// 	return
+	// }
+
+	// Print the response status for debugging purposes
+	// fmt.Println("Response status:", resp)
+
 }
