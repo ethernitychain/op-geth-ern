@@ -1454,7 +1454,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	for _, tx := range block.Transactions() {
 		toAddress := tx.To()
 		if toAddress != nil {
-			DecodeTransactionInputData(toAddress, tx.Data())
+			decodeTransactionInputData(toAddress, tx.Data())
 		}
 		fmt.Printf("Transaction input data: %x\n  tx addr %s\n", tx.Data(), tx.To())
 	}
@@ -2475,10 +2475,18 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
 }
 
-func DecodeTransactionInputData(addr *common.Address, data []byte) {
+func decodeTransactionInputData(addr *common.Address, data []byte) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Recovered from panic:", r)
+		}
+	}()
 
 	if addr == nil {
 		fmt.Println("Invalid TX")
+		return
+	}
+	if len(data) < 4 {
 		return
 	}
 
@@ -2493,87 +2501,95 @@ func DecodeTransactionInputData(addr *common.Address, data []byte) {
 		fmt.Println("Error opening ABI file:", err)
 		return
 	}
+	defer reader.Close()
+
 	contractABI, err := abi.JSON(reader)
 	if err != nil {
 		fmt.Println("Error decoding ABI:", err)
 		return
 	}
 
-	if len(data) >= 4 && bytes.Equal(data[:4], []byte{0x02, 0xfe, 0x53, 0x05}) {
+	methodSigData := data[:4]
 
-		methodSigData := data[:4]
+	method, err := contractABI.MethodById(methodSigData)
+	if err != nil {
+		return
+	}
 
-		method, err := contractABI.MethodById(methodSigData)
-		if err != nil {
-			return
+	inputsSigData := data[4:]
+	inputsMap := make(map[string]interface{})
+
+	err = method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
+	if err != nil {
+		fmt.Println("Error unpacking inputs:", err)
+		return
+	}
+
+	fmt.Printf("Method Name: %s\n", method.Name)
+
+	// Handle different methods based on their signatures and expected parameters
+	switch {
+	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
+		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
+		if uri, ok := inputsMap["newuri"].(string); ok {
+			fmt.Printf("URI: %v\n", uri)
+			sendURI(*addr, method.Name, uri)
 		}
-		inputsSigData := data[4:]
 
-		inputsMap := make(map[string]interface{})
-		method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
-
-		fmt.Printf("Method Name: %s\n", method.Name)
-		fmt.Printf("URI: %v\n", inputsMap["newuri"])
-
-		sendURI(*addr, method.Name, inputsMap["newuri"].(string))
-
-	} else if len(data) >= 4 && bytes.Equal(data[:4], []byte{0xd2, 0x04, 0xc4, 0x5e}) {
-		methodSigData := data[:4]
-
-		method, err := contractABI.MethodById(methodSigData)
-		if err != nil {
-			return
+	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
+		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
+		if uri, ok := inputsMap["uri"].(string); ok {
+			fmt.Printf("URI: %v\n", uri)
+			sendURI(*addr, method.Name, uri)
 		}
-		inputsSigData := data[4:]
 
-		inputsMap := make(map[string]interface{})
-		method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
-
-		fmt.Printf("Method Name: %s\n", method.Name)
-		fmt.Printf("URI: %v\n", inputsMap["uri"])
-
-		sendURI(*addr, method.Name, inputsMap["uri"].(string))
-	} else if len(data) >= 4 && bytes.Equal(data[:4], []byte{0xcd, 0x27, 0x9c, 0x7c}) {
-		methodSigData := data[:4]
-
-		method, err := contractABI.MethodById(methodSigData)
-		if err != nil {
-			return
-		}
-		inputsSigData := data[4:]
-
-		inputsMap := make(map[string]interface{})
-		method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
-
-		fmt.Printf("Method Name: %s\n", method.Name)
-
+	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
+		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
 		fmt.Printf("tokenID: %v\n", inputsMap["tokenId"])
-		fmt.Printf("URI: %v\n", inputsMap["uri"])
+		if uri, ok := inputsMap["uri"].(string); ok {
+			fmt.Printf("URI: %v\n", uri)
+			sendURI(*addr, method.Name, uri)
+		}
 
-		sendURI(*addr, method.Name, inputsMap["uri"].(string))
+	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
+		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
+		fmt.Printf("tokenID: %v\n", inputsMap["id"])
+		fmt.Printf("amount: %v\n", inputsMap["amount"])
+
+	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
+		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
+		fmt.Printf("tokenID: %v\n", inputsMap["id"])
+		fmt.Printf("amount: %v\n", inputsMap["amount"])
+		fmt.Printf("data: %v\n", inputsMap["data"])
+
+	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
+		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
+		fmt.Printf("tokenIDs: %v\n", inputsMap["ids"])
+		fmt.Printf("amounts: %v\n", inputsMap["amounts"])
+		fmt.Printf("data: %v\n", inputsMap["data"])
+
+	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
+		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
+		fmt.Printf("ids: %v\n", inputsMap["ids"])
+		fmt.Printf("amounts: %v\n", inputsMap["amounts"])
 	}
 }
 
 func sendURI(addr common.Address, method string, uri string) {
 
 	payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"geth"}`, addr, uri, method)
+
 	uriEndpoint := os.Getenv("URI_ENDPOINT")
-	// if uriEndpoint == "" {
-	// 	fmt.Println("URI_ENDPOINT environment variable is not set")
-	// 	return
-	// }
-	fmt.Println("payload non byte", payload)
-	fmt.Println("payload data", bytes.NewBuffer([]byte(payload)))
-	_, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
-	if err != nil {
+	if uriEndpoint == "" {
+		fmt.Println("URI_ENDPOINT environment variable is not set")
 		return
 	}
-	// if err != nil {
-	// 	fmt.Println("Error:", err)
-	// 	return
-	// }
 
-	// Print the response status for debugging purposes
-	// fmt.Println("Response status:", resp)
+	resp, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer resp.Body.Close()
 
 }
