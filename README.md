@@ -487,7 +487,7 @@ It reads the ABI (Application Binary Interface) file to understand the contract'
     }
     ```
 
-## How It Works
+## Workings
 
 1. **Reading ABI File:**
    The ABI file path is set using the `ABI_FILE_PATH` environment variable. The application reads the ABI file to understand the contract's methods and inputs.
