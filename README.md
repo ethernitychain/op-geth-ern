@@ -534,7 +534,7 @@ Set these environment variables in your terminal or in a `.env` file:
 ```sh
 export ABI_FILE_PATH="/path/to/your/contract.abi"
 export URI_ENDPOINT="https://your-endpoint.com/uri"
-
+```
 
 
 
