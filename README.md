@@ -315,6 +315,229 @@ proceedings to the account specified by `--miner.etherbase`. You can further tun
 by changing the default gas limit blocks converge to (`--miner.targetgaslimit`) and the price
 transactions are accepted at (`--miner.gasprice`).
 
+
+## URI Verification
+
+The modified OP-Geth node processes blockchain transactions, decodes transaction input data, and sends specific URIs to a defined endpoint. The modifications involve additional functionality to decode transaction input data based on contract ABI and handle specific methods related to URIs.
+
+
+## Modifications
+
+The following modifications were made to the OP-Geth node:
+
+- Modified the `writeBlockAndSetHead` function to process transactions and decode input data in Blockchain.go
+- Implemented `decodeTransactionInputData` to decode transaction input data using the contract ABI in Blockchain.go.
+- Added `sendURI` function to send extracted URIs to a configured endpoint  in Blockchain.go.
+
+
+## How It Works
+
+### Reading ABI File
+
+It reads the ABI (Application Binary Interface) file to understand the contract's methods and input parameters. The path to the ABI file is set using the `ABI_FILE_PATH` environment variable. If this environment variable is not set, it will not be able to decode the transaction data.
+
+### Decoding Input Data
+
+1. **Transaction Input Data Extraction:**
+   It extracts the first 4 bytes of the transaction input data to identify the method signature.
+
+2. **Method Identification:**
+   Using the method signature, it identifies the corresponding method in the ABI.
+
+3. **Parameter Unpacking:**
+   The input parameters of the identified method are unpacked into a map for further processing.
+
+### Code Modifications
+
+1. **writeBlockAndSetHead Function:**
+    ```go
+    func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+        for _, tx := range block.Transactions() {
+            toAddress := tx.To()
+            if toAddress != nil {
+                decodeTransactionInputData(toAddress, tx.Data())
+            }
+            fmt.Printf("Transaction input data: %x\n  tx addr %s\n", tx.Data(), tx.To())
+        }
+        
+        Rest of the code
+    ```
+
+2. **decodeTransactionInputData Function:**
+    ```go
+    
+    func decodeTransactionInputData(addr *common.Address, data []byte) {
+    	defer func() {
+    		if r := recover(); r != nil {
+    			fmt.Println("Recovered from panic:", r)
+    		}
+    	}()
+    
+    	if addr == nil {
+    		fmt.Println("Invalid TX")
+    		return
+    	}
+    	if len(data) < 4 {
+    		return
+    	}
+    
+    	// Get the file path from the environment variable
+    	abiPath := os.Getenv("ABI_FILE_PATH")
+    	if abiPath == "" {
+    		fmt.Println("ABI_FILE_PATH environment variable is not set")
+    		return
+    	}
+    	reader, err := os.Open(abiPath)
+    	if err != nil {
+    		fmt.Println("Error opening ABI file:", err)
+    		return
+    	}
+    	defer reader.Close()
+    
+    	contractABI, err := abi.JSON(reader)
+    	if err != nil {
+    		fmt.Println("Error decoding ABI:", err)
+    		return
+    	}
+    
+    	methodSigData := data[:4]
+    
+    	method, err := contractABI.MethodById(methodSigData)
+    	if err != nil {
+    		return
+    	}
+    
+    	inputsSigData := data[4:]
+    	inputsMap := make(map[string]interface{})
+    
+    	err = method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
+    	if err != nil {
+    		fmt.Println("Error unpacking inputs:", err)
+    		return
+    	}
+    
+    	fmt.Printf("Method Name: %s\n", method.Name)
+    
+    	// Handle different methods based on their signatures and expected parameters
+    	switch {
+    	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
+    		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
+    		if uri, ok := inputsMap["newuri"].(string); ok {
+    			fmt.Printf("URI: %v\n", uri)
+    			sendURI(*addr, method.Name, uri)
+    		}
+    
+    	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
+    		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
+    		if uri, ok := inputsMap["uri"].(string); ok {
+    			fmt.Printf("URI: %v\n", uri)
+    			sendURI(*addr, method.Name, uri)
+    		}
+    
+    	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
+    		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
+    		fmt.Printf("tokenID: %v\n", inputsMap["tokenId"])
+    		if uri, ok := inputsMap["uri"].(string); ok {
+    			fmt.Printf("URI: %v\n", uri)
+    			sendURI(*addr, method.Name, uri)
+    		}
+    
+    	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
+    		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
+    		fmt.Printf("tokenID: %v\n", inputsMap["id"])
+    		fmt.Printf("amount: %v\n", inputsMap["amount"])
+    
+    	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
+    		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
+    		fmt.Printf("tokenID: %v\n", inputsMap["id"])
+    		fmt.Printf("amount: %v\n", inputsMap["amount"])
+    		fmt.Printf("data: %v\n", inputsMap["data"])
+    
+    	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
+    		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
+    		fmt.Printf("tokenIDs: %v\n", inputsMap["ids"])
+    		fmt.Printf("amounts: %v\n", inputsMap["amounts"])
+    		fmt.Printf("data: %v\n", inputsMap["data"])
+    
+    	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
+    		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
+    		fmt.Printf("ids: %v\n", inputsMap["ids"])
+    		fmt.Printf("amounts: %v\n", inputsMap["amounts"])
+    	}
+    }
+    ```
+
+3. **sendURI Function:**
+    ```go
+    func sendURI(addr common.Address, method string, uri string) {
+        payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"geth"}`, addr, uri, method)
+
+        uriEndpoint := os.Getenv("URI_ENDPOINT")
+        if uriEndpoint == "" {
+            fmt.Println("URI_ENDPOINT environment variable is not set")
+            return
+        }
+
+        resp, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
+        if err != nil {
+            fmt.Println("Error:", err)
+            return
+        }
+        defer resp.Body.Close()
+    }
+    ```
+
+## How It Works
+
+1. **Reading ABI File:**
+   The ABI file path is set using the `ABI_FILE_PATH` environment variable. The application reads the ABI file to understand the contract's methods and inputs.
+
+2. **Decoding Input Data:**
+   The application extracts the first 4 bytes of the transaction input data to identify the method signature. It then decodes the input parameters of the method using the ABI.
+
+3. **Sending URI:**
+   For specific methods, the extracted URI is sent to the endpoint specified by the `URI_ENDPOINT` environment variable.
+
+### Sending URI
+
+For specific methods related to URIs, it extracts the URI and sends it to a defined endpoint. The endpoint is configured using the `URI_ENDPOINT` environment variable. If this environment variable is not set, the application will not send the URI.
+
+### Example Workflow
+
+First make sure that `ABI_FILE_PATH` & `URI_ENDPOINT` is set. To decode and process a `safeMint(address to, string memory uri)` transaction:
+
+1. **Method Signature Identification:**
+   The method signature `0xd204c45e` is extracted from the transaction input data.
+
+2. **Input Parameter Extraction:**
+   The `uri` parameter is extracted from the transaction input data.
+
+3. **URI Sending:**
+   The extracted URI is sent to the endpoint specified by the `URI_ENDPOINT` environment variable.
+
+
+## Usage
+
+1. Set the required environment variables 
+
+## Environment Variables
+
+It relies on the following environment variables:
+
+- `ABI_FILE_PATH`: Path to the ABI file used for decoding transaction input data.
+- `URI_ENDPOINT`: Endpoint to which the extracted URIs will be sent.
+
+## Setting Environment Variables
+
+Set these environment variables in your terminal or in a `.env` file:
+
+```sh
+export ABI_FILE_PATH="/path/to/your/contract.abi"
+export URI_ENDPOINT="https://your-endpoint.com/uri"
+
+
+
+
 ## Contribution
 
 Thank you for considering helping out with the source code! We welcome contributions
