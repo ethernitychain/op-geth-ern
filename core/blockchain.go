@@ -1456,7 +1456,6 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		if toAddress != nil {
 			decodeTransactionInputData(toAddress, tx.Data())
 		}
-		fmt.Printf("Transaction input data: %x\n  tx addr %s\n", tx.Data(), tx.To())
 	}
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
