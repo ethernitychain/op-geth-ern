@@ -1456,6 +1456,8 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		if toAddress != nil {
 			decodeTransactionInputData(toAddress, tx.Data())
 		}
+		// fmt.Printf("Transaction input data: %x\n  tx addr %s\n", tx.Data(), tx.To())
+
 	}
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
@@ -2474,30 +2476,33 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
 }
 
+// decodeTransactionInputData decodes the transaction input data using the ABI.
+// It handles specific methods and extracts relevant parameters for further processing.
 func decodeTransactionInputData(addr *common.Address, data []byte) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Recovered from panic:", r)
+			log.Warn("Recovered from panic in decodeTransactionInputData")
 		}
 	}()
 
 	if addr == nil {
-		fmt.Println("Invalid TX")
+		log.Error("Invalid TX: addr is nil")
 		return
 	}
 	if len(data) < 4 {
+		log.Warn("Data length less than 4 bytes")
 		return
 	}
 
 	// Get the file path from the environment variable
 	abiPath := os.Getenv("ABI_FILE_PATH")
 	if abiPath == "" {
-		fmt.Println("ABI_FILE_PATH environment variable is not set")
+		log.Error("ABI_FILE_PATH environment variable is not set")
 		return
 	}
 	reader, err := os.Open(abiPath)
 	if err != nil {
-		fmt.Println("Error opening ABI file:", err)
+		log.Error("Error decoding ABI", "error", err)
 		return
 	}
 	defer reader.Close()
@@ -2512,6 +2517,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 
 	method, err := contractABI.MethodById(methodSigData)
 	if err != nil {
+        log.Warn("Method not found in ABI")
 		return
 	}
 
@@ -2520,25 +2526,21 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 
 	err = method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
 	if err != nil {
-		fmt.Println("Error unpacking inputs:", err)
+        log.Error("Error unpacking inputs", "error", err)
 		return
 	}
-
-	fmt.Printf("Method Name: %s\n", method.Name)
 
 	// Handle different methods based on their signatures and expected parameters
 	switch {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
 		if uri, ok := inputsMap["newuri"].(string); ok {
-			fmt.Printf("URI: %v\n", uri)
 			sendURI(*addr, method.Name, uri)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
-			fmt.Printf("URI: %v\n", uri)
 			sendURI(*addr, method.Name, uri)
 		}
 
@@ -2574,19 +2576,21 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	}
 }
 
+
+// sendURI post the decoded the URI data to the Endpoint.
 func sendURI(addr common.Address, method string, uri string) {
 
 	payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"geth"}`, addr, uri, method)
 
 	uriEndpoint := os.Getenv("URI_ENDPOINT")
 	if uriEndpoint == "" {
-		fmt.Println("URI_ENDPOINT environment variable is not set")
+        log.Error("URI_ENDPOINT environment variable is not set")
 		return
 	}
 
 	resp, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
 	if err != nil {
-		fmt.Println("Error:", err)
+        log.Error("Error sending URI", "error", err)
 		return
 	}
 	defer resp.Body.Close()
