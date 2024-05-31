@@ -2517,7 +2517,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 
 	method, err := contractABI.MethodById(methodSigData)
 	if err != nil {
-        log.Warn("Method not found in ABI")
+		log.Warn("Method not found in ABI")
 		return
 	}
 
@@ -2526,7 +2526,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 
 	err = method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
 	if err != nil {
-        log.Error("Error unpacking inputs", "error", err)
+		log.Error("Error unpacking inputs", "error", err)
 		return
 	}
 
@@ -2535,47 +2535,48 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
 		if uri, ok := inputsMap["newuri"].(string); ok {
+			log.Info("URI", "value", uri)
 			sendURI(*addr, method.Name, uri)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
+			log.Info("URI", "value", uri)
 			sendURI(*addr, method.Name, uri)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
 		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
-		fmt.Printf("tokenID: %v\n", inputsMap["tokenId"])
+		log.Info("tokenID", "value", inputsMap["tokenId"])
 		if uri, ok := inputsMap["uri"].(string); ok {
-			fmt.Printf("URI: %v\n", uri)
+			log.Info("URI", "value", uri)
 			sendURI(*addr, method.Name, uri)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
 		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
-		fmt.Printf("tokenID: %v\n", inputsMap["id"])
-		fmt.Printf("amount: %v\n", inputsMap["amount"])
+		log.Info("tokenID", "value", inputsMap["id"])
+		log.Info("amount", "value", inputsMap["amount"])
 
 	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
 		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
-		fmt.Printf("tokenID: %v\n", inputsMap["id"])
-		fmt.Printf("amount: %v\n", inputsMap["amount"])
-		fmt.Printf("data: %v\n", inputsMap["data"])
+		log.Info("tokenID", "value", inputsMap["id"])
+		log.Info("amount", "value", inputsMap["amount"])
+		log.Info("data", "value", inputsMap["data"])
 
 	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
-		fmt.Printf("tokenIDs: %v\n", inputsMap["ids"])
-		fmt.Printf("amounts: %v\n", inputsMap["amounts"])
-		fmt.Printf("data: %v\n", inputsMap["data"])
+		log.Info("tokenIDs", "value", inputsMap["ids"])
+		log.Info("amounts", "value", inputsMap["amounts"])
+		log.Info("data", "value", inputsMap["data"])
 
 	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
-		fmt.Printf("ids: %v\n", inputsMap["ids"])
-		fmt.Printf("amounts: %v\n", inputsMap["amounts"])
+		log.Info("ids", "value", inputsMap["ids"])
+		log.Info("amounts", "value", inputsMap["amounts"])
 	}
 }
-
 
 // sendURI post the decoded the URI data to the Endpoint.
 func sendURI(addr common.Address, method string, uri string) {
@@ -2584,13 +2585,13 @@ func sendURI(addr common.Address, method string, uri string) {
 
 	uriEndpoint := os.Getenv("URI_ENDPOINT")
 	if uriEndpoint == "" {
-        log.Error("URI_ENDPOINT environment variable is not set")
+		log.Error("URI_ENDPOINT environment variable is not set")
 		return
 	}
 
 	resp, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
 	if err != nil {
-        log.Error("Error sending URI", "error", err)
+		log.Error("Error sending URI", "error", err)
 		return
 	}
 	defer resp.Body.Close()
