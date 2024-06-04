@@ -1453,11 +1453,9 @@ func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types
 func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
 	for _, tx := range block.Transactions() {
 		toAddress := tx.To()
-		if toAddress != nil {
+		if toAddress != nil && tx.Data() != nil {
 			decodeTransactionInputData(toAddress, tx.Data())
 		}
-		// fmt.Printf("Transaction input data: %x\n  tx addr %s\n", tx.Data(), tx.To())
-
 	}
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
 		return NonStatTy, err
@@ -2509,7 +2507,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 
 	contractABI, err := abi.JSON(reader)
 	if err != nil {
-		fmt.Println("Error decoding ABI:", err)
+		log.Error("Error decoding ABI:", "error", err)
 		return
 	}
 
@@ -2535,53 +2533,73 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
 		if uri, ok := inputsMap["newuri"].(string); ok {
-			log.Info("URI", "value", uri)
-			sendURI(*addr, method.Name, uri)
+			postDecodedInput(*addr, method.Name, uri, "")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
-			log.Info("URI", "value", uri)
-			sendURI(*addr, method.Name, uri)
+			postDecodedInput(*addr, method.Name, uri, "")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
 		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
-		log.Info("tokenID", "value", inputsMap["tokenId"])
+		tokenIDStr := ""
+		if tokenID, ok := inputsMap["tokenId"]; ok {
+
+			tokenIDStr = fmt.Sprintf("%v", tokenID)
+		}
 		if uri, ok := inputsMap["uri"].(string); ok {
-			log.Info("URI", "value", uri)
-			sendURI(*addr, method.Name, uri)
+			postDecodedInput(*addr, method.Name, uri, tokenIDStr)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
 		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
-		log.Info("tokenID", "value", inputsMap["id"])
-		log.Info("amount", "value", inputsMap["amount"])
+		if tokenID, ok := inputsMap["id"]; ok {
+			fmt.Printf("Type of tokenID: %T\n", tokenID)
+			tokenIDStr := fmt.Sprintf("%v", tokenID)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+		}
 
 	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
 		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
-		log.Info("tokenID", "value", inputsMap["id"])
-		log.Info("amount", "value", inputsMap["amount"])
-		log.Info("data", "value", inputsMap["data"])
+		if ids, ok := inputsMap["ids"]; ok {
+			tokenIDStr := fmt.Sprintf("%v", ids)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+		}
 
 	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
-		log.Info("tokenIDs", "value", inputsMap["ids"])
-		log.Info("amounts", "value", inputsMap["amounts"])
-		log.Info("data", "value", inputsMap["data"])
+		tokenIDStr := "[]"
+		if ids, ok := inputsMap["ids"]; ok {
+			tokenIDStr = fmt.Sprintf("%v", ids)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+		}
 
 	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
-		log.Info("ids", "value", inputsMap["ids"])
-		log.Info("amounts", "value", inputsMap["amounts"])
+		tokenIDStr := "[]"
+		if ids, ok := inputsMap["ids"]; ok {
+			tokenIDStr = fmt.Sprintf("%v", ids)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+		}
 	}
 }
 
-// sendURI post the decoded the URI data to the Endpoint.
-func sendURI(addr common.Address, method string, uri string) {
+// postDecodedInput post the decoded the URI data to the Endpoint.
+func postDecodedInput(addr common.Address, method string, uri string, tokenID string) {
+	origin := os.Getenv("ORIGIN")
+	if origin == "" {
+		origin = "op-geth"
+	}
 
-	payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"geth"}`, addr, uri, method)
+	payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"%s","token_id":%s}`,
+		addr.Hex(),
+		uri,
+		method,
+		origin,
+		tokenID,
+	)
 
 	uriEndpoint := os.Getenv("URI_ENDPOINT")
 	if uriEndpoint == "" {
@@ -2595,5 +2613,4 @@ func sendURI(addr common.Address, method string, uri string) {
 		return
 	}
 	defer resp.Body.Close()
-
 }
