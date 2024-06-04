@@ -532,8 +532,7 @@ First make sure that `ABI_FILE_PATH` & `URI_ENDPOINT` is set. To decode and proc
    The method signature `0xcd279c7c` is extracted from the transaction input data.
 
 2. **Input Parameter Extraction:**
-   The `uri` parameter is extracted from the transaction input data.
-   The `tokenId` parameter is extracted from the transaction input data.
+   The `uri` & `tokenId` parameter is extracted from the transaction input data.
 
 4. **Payload Posting:**
    The extracted Payload is sent to the endpoint specified by the `URI_ENDPOINT` environment variable.
