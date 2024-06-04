@@ -557,7 +557,7 @@ Set these environment variables in your terminal or in a `.env` file:
 ```bash
 export ABI_FILE_PATH="/path/to/your/contract.abi"
 export URI_ENDPOINT="https://your-endpoint.com/uri"
-export ORIGIN=op-geth
+export ORIGIN=origin
 ```
 
 
