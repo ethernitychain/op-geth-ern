@@ -352,13 +352,12 @@ It reads the ABI (Application Binary Interface) file to understand the contract'
 1. **writeBlockAndSetHead Function:**
     ```go
     func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
-        for _, tx := range block.Transactions() {
-            toAddress := tx.To()
-            if toAddress != nil {
-                decodeTransactionInputData(toAddress, tx.Data())
-            }
-            fmt.Printf("Transaction input data: %x\n  tx addr %s\n", tx.Data(), tx.To())
-        }
+   	for _, tx := range block.Transactions() {
+   		toAddress := tx.To()
+   		if toAddress != nil && tx.Data() != nil {
+   			decodeTransactionInputData(toAddress, tx.Data())
+   		}
+   	}
         
         Rest of the code
     ```
