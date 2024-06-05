@@ -19,6 +19,7 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -2547,7 +2548,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 		tokenIDStr := ""
 		if tokenID, ok := inputsMap["tokenId"]; ok {
 
-			tokenIDStr = fmt.Sprintf("%v", tokenID)
+			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
 		}
 		if uri, ok := inputsMap["uri"].(string); ok {
 			postDecodedInput(*addr, method.Name, uri, tokenIDStr)
@@ -2556,14 +2557,14 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
 		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
 		if tokenID, ok := inputsMap["id"]; ok {
-			tokenIDStr := fmt.Sprintf("%v", tokenID)
+			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
 			postDecodedInput(*addr, method.Name, "", tokenIDStr)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
 		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
-		if ids, ok := inputsMap["ids"]; ok {
-			tokenIDStr := fmt.Sprintf("%v", ids)
+		if ids, ok := inputsMap["id"]; ok {
+			tokenIDStr := fmt.Sprintf(`"[%v]"`, ids)
 			postDecodedInput(*addr, method.Name, "", tokenIDStr)
 		}
 
@@ -2571,7 +2572,11 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
 		tokenIDStr := "[]"
 		if ids, ok := inputsMap["ids"]; ok {
-			tokenIDStr = fmt.Sprintf("%v", ids)
+			idsArray, err := json.Marshal(ids)
+			if err != nil {
+				return
+			}
+			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
 			postDecodedInput(*addr, method.Name, "", tokenIDStr)
 		}
 
@@ -2579,7 +2584,11 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
 		tokenIDStr := "[]"
 		if ids, ok := inputsMap["ids"]; ok {
-			tokenIDStr = fmt.Sprintf("%v", ids)
+			idsArray, err := json.Marshal(ids)
+			if err != nil {
+				return
+			}
+			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
 			postDecodedInput(*addr, method.Name, "", tokenIDStr)
 		}
 	}
