@@ -445,7 +445,6 @@ It reads the ABI (Application Binary Interface) file to understand the contract'
    	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
    		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
    		if tokenID, ok := inputsMap["id"]; ok {
-   			fmt.Printf("Type of tokenID: %T\n", tokenID)
    			tokenIDStr := fmt.Sprintf("%v", tokenID)
    			postDecodedInput(*addr, method.Name, "", tokenIDStr)
    		}
