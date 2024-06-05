@@ -365,114 +365,122 @@ It reads the ABI (Application Binary Interface) file to understand the contract'
 2. **decodeTransactionInputData Function:**
     ```go
        
-   func decodeTransactionInputData(addr *common.Address, data []byte) {
-   	defer func() {
-   		if r := recover(); r != nil {
-   			log.Warn("Recovered from panic in decodeTransactionInputData")
-   		}
-   	}()
-   
-   	if addr == nil {
-   		log.Error("Invalid TX: addr is nil")
-   		return
-   	}
-   	if len(data) < 4 {
-   		log.Warn("Data length less than 4 bytes")
-   		return
-   	}
-   
-   	// Get the file path from the environment variable
-   	abiPath := os.Getenv("ABI_FILE_PATH")
-   	if abiPath == "" {
-   		log.Error("ABI_FILE_PATH environment variable is not set")
-   		return
-   	}
-   	reader, err := os.Open(abiPath)
-   	if err != nil {
-   		log.Error("Error decoding ABI", "error", err)
-   		return
-   	}
-   	defer reader.Close()
-   
-   	contractABI, err := abi.JSON(reader)
-   	if err != nil {
-   		log.Error("Error decoding ABI:", "error", err)
-   		return
-   	}
-   
-   	methodSigData := data[:4]
-   
-   	method, err := contractABI.MethodById(methodSigData)
-   	if err != nil {
-   		log.Warn("Method not found in ABI")
-   		return
-   	}
-   
-   	inputsSigData := data[4:]
-   	inputsMap := make(map[string]interface{})
-   
-   	err = method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
-   	if err != nil {
-   		log.Error("Error unpacking inputs", "error", err)
-   		return
-   	}
-   
-   	// Handle different methods based on their signatures and expected parameters
-   	switch {
-   	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
-   		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
-   		if uri, ok := inputsMap["newuri"].(string); ok {
-   			postDecodedInput(*addr, method.Name, uri, "")
-   		}
-   
-   	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
-   		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
-   		if uri, ok := inputsMap["uri"].(string); ok {
-   			postDecodedInput(*addr, method.Name, uri, "")
-   		}
-   
-   	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
-   		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
-   		tokenIDStr := ""
-   		if tokenID, ok := inputsMap["tokenId"]; ok {
-   
-   			tokenIDStr = fmt.Sprintf("%v", tokenID)
-   		}
-   		if uri, ok := inputsMap["uri"].(string); ok {
-   			postDecodedInput(*addr, method.Name, uri, tokenIDStr)
-   		}
-   
-   	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
-   		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
-   		if tokenID, ok := inputsMap["id"]; ok {
-   			tokenIDStr := fmt.Sprintf("%v", tokenID)
-   			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-   		}
-   
-   	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
-   		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
-   		if ids, ok := inputsMap["ids"]; ok {
-   			tokenIDStr := fmt.Sprintf("%v", ids)
-   			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-   		}
-   
-   	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
-   		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
-   		tokenIDStr := "[]"
-   		if ids, ok := inputsMap["ids"]; ok {
-   			tokenIDStr = fmt.Sprintf("%v", ids)
-   			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-   		}
-   
-   	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
-   		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
-   		tokenIDStr := "[]"
-   		if ids, ok := inputsMap["ids"]; ok {
-   			tokenIDStr = fmt.Sprintf("%v", ids)
-   			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-   		}
-   	}
-   }
+      func decodeTransactionInputData(addr *common.Address, data []byte) {
+      	defer func() {
+      		if r := recover(); r != nil {
+      			log.Warn("Recovered from panic in decodeTransactionInputData")
+      		}
+      	}()
+      
+      	if addr == nil {
+      		log.Error("Invalid TX: addr is nil")
+      		return
+      	}
+      	if len(data) < 4 {
+      		log.Warn("Data length less than 4 bytes")
+      		return
+      	}
+      
+      	// Get the file path from the environment variable
+      	abiPath := os.Getenv("ABI_FILE_PATH")
+      	if abiPath == "" {
+      		log.Error("ABI_FILE_PATH environment variable is not set")
+      		return
+      	}
+      	reader, err := os.Open(abiPath)
+      	if err != nil {
+      		log.Error("Error decoding ABI", "error", err)
+      		return
+      	}
+      	defer reader.Close()
+      
+      	contractABI, err := abi.JSON(reader)
+      	if err != nil {
+      		log.Error("Error decoding ABI:", "error", err)
+      		return
+      	}
+      
+      	methodSigData := data[:4]
+      
+      	method, err := contractABI.MethodById(methodSigData)
+      	if err != nil {
+      		log.Warn("Method not found in ABI")
+      		return
+      	}
+      
+      	inputsSigData := data[4:]
+      	inputsMap := make(map[string]interface{})
+      
+      	err = method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
+      	if err != nil {
+      		log.Error("Error unpacking inputs", "error", err)
+      		return
+      	}
+      
+      	// Handle different methods based on their signatures and expected parameters
+      	switch {
+      	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
+      		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
+      		if uri, ok := inputsMap["newuri"].(string); ok {
+      			postDecodedInput(*addr, method.Name, uri, "")
+      		}
+      
+      	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
+      		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
+      		if uri, ok := inputsMap["uri"].(string); ok {
+      			postDecodedInput(*addr, method.Name, uri, "")
+      		}
+      
+      	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
+      		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
+      		tokenIDStr := ""
+      		if tokenID, ok := inputsMap["tokenId"]; ok {
+      
+      			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
+      		}
+      		if uri, ok := inputsMap["uri"].(string); ok {
+      			postDecodedInput(*addr, method.Name, uri, tokenIDStr)
+      		}
+      
+      	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
+      		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
+      		if tokenID, ok := inputsMap["id"]; ok {
+      			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
+      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+      		}
+      
+      	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
+      		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
+      		if ids, ok := inputsMap["id"]; ok {
+      			tokenIDStr := fmt.Sprintf(`"[%v]"`, ids)
+      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+      		}
+      
+      	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
+      		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
+      		tokenIDStr := "[]"
+      		if ids, ok := inputsMap["ids"]; ok {
+      			idsArray, err := json.Marshal(ids)
+      			if err != nil {
+      				return
+      			}
+      			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
+      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+      		}
+      
+      	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
+      		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
+      		tokenIDStr := "[]"
+      		if ids, ok := inputsMap["ids"]; ok {
+      			idsArray, err := json.Marshal(ids)
+      			if err != nil {
+      				return
+      			}
+      			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
+      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+      		}
+      	}
+      }
 
     ```
 
