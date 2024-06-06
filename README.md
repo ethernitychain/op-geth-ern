@@ -325,7 +325,7 @@ The modified OP-Geth node processes blockchain transactions, decodes transaction
 
 The following modifications were made to the OP-Geth node:
 
-- Modified the `writeBlockAndSetHead` function to process transactions and decode input data in Blockchain.go
+- Modified the `writeBlockWithState` function to process transactions and decode input data in Blockchain.go
 - Implemented `decodeTransactionInputData` to decode transaction input data using the contract ABI in Blockchain.go.
 - Added `postDecodedInput` function to send the extracted Input data to a configured endpoint  in Blockchain.go.
 
@@ -349,15 +349,17 @@ It reads the ABI (Application Binary Interface) file to understand the contract'
 
 ### Code Modifications
 
-1. **writeBlockAndSetHead Function:**
+1. **writeBlockWithState Function:**
     ```go
-    func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
-   	for _, tx := range block.Transactions() {
-   		toAddress := tx.To()
-   		if toAddress != nil && tx.Data() != nil {
-   			decodeTransactionInputData(toAddress, tx.Data())
-   		}
-   	}
+	// writeBlockWithState writes block, metadata and corresponding state data to the
+	// database.
+	func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
+		for _, tx := range block.Transactions() {
+			toAddress := tx.To()
+			if toAddress != nil && tx.Data() != nil {
+				decodeTransactionInputData(toAddress, tx.Data())
+			}
+		}
         
         Rest of the code
     ```
