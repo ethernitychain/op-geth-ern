@@ -19,12 +19,12 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
-	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -32,6 +32,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"cloud.google.com/go/pubsub"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -56,6 +57,7 @@ import (
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
 	"golang.org/x/exp/slices"
+	"google.golang.org/api/option"
 )
 
 var (
@@ -2616,16 +2618,56 @@ func postDecodedInput(addr common.Address, method string, uri string, tokenID st
 		tokenID,
 	)
 
-	uriEndpoint := os.Getenv("URI_ENDPOINT")
-	if uriEndpoint == "" {
-		log.Error("URI_ENDPOINT environment variable is not set")
+	if err := publishMessage(payload); err != nil {
+		log.Error("Failed to publish message", "error", err)
 		return
+	}
+}
+
+// publishMessage publishes a message to a Google Pub/Sub topic.
+func publishMessage(msg string) error {
+	ctx := context.Background()
+
+	projectID := os.Getenv("PUBSUB_PROJECT_ID")
+	if projectID == "" {
+		log.Error("Environment variable PUBSUB_PROJECT_ID is not set")
+		return fmt.Errorf("environment variable PUBSUB_PROJECT_ID is not set")
 	}
 
-	resp, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
-	if err != nil {
-		log.Error("Error sending URI", "error", err)
-		return
+	topicID := os.Getenv("PUBSUB_TOPIC_ID")
+	if topicID == "" {
+		log.Error("Environment variable PUBSUB_TOPIC_ID is not set")
+		return fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
 	}
-	defer resp.Body.Close()
+
+	credentialPath := os.Getenv("PUBSUB_CREDENTIAL_PATH")
+	if credentialPath == "" {
+		log.Error("Environment variable PUBSUB_CREDENTIAL_PATH is not set")
+		return fmt.Errorf("environment variable PUBSUB_CREDENTIAL_PATH is not set")
+	}
+
+	client, err := pubsub.NewClient(ctx, projectID, option.WithCredentialsFile(credentialPath))
+	if err != nil {
+		return fmt.Errorf("pubsub: NewClient: %w", err)
+	}
+	defer func() {
+		if err := client.Close(); err != nil {
+			log.Error("Failed to close Pub/Sub client", "error", err)
+		}
+	}()
+
+	payloadBytes := []byte(msg) // Convert payload string to bytes
+
+	t := client.Topic(topicID)
+	result := t.Publish(ctx, &pubsub.Message{
+		Data: payloadBytes,
+	})
+
+	id, err := result.Get(ctx)
+	if err != nil {
+		return fmt.Errorf("pubsub: result.Get: %w", err)
+	}
+
+	log.Info("Published the Decoded payload", "msg ID", id)
+	return nil
 }
