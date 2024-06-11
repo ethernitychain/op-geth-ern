@@ -2543,6 +2543,13 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 			postDecodedInput(*addr, method.Name, uri, "")
 		}
 
+	case bytes.Equal(methodSigData, []byte{0xa1, 0x44, 0x81, 0x94}):
+		// Decode safeMint(address to, uint256 tokenId) -- Signature: 0xa1448194
+		if tokenID, ok := inputsMap["tokenId"]; ok {
+			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+		}
+
 	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
 		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
 		tokenIDStr := ""
