@@ -101,6 +101,10 @@ var (
 	errChainStopped         = errors.New("blockchain is stopped")
 	errInvalidOldChain      = errors.New("invalid old chain")
 	errInvalidNewChain      = errors.New("invalid new chain")
+
+	pubSubClient *pubsub.Client
+	pubSubOnce   sync.Once
+	clientLock   sync.Mutex
 )
 
 const (
@@ -1355,12 +1359,24 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // writeBlockWithState writes block, metadata and corresponding state data to the
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
-	for _, tx := range block.Transactions() {
-		toAddress := tx.To()
-		if toAddress != nil && tx.Data() != nil {
-			decodeTransactionInputData(toAddress, tx.Data())
-		}
+
+	// Check if DISABLE_DECODING environment variable is not true
+	disableDecoding := os.Getenv("DISABLE_DECODING")
+	if disableDecoding != "true" {
+		initPubSubClient()
+		go func() {
+			// Process transactions
+			for _, tx := range block.Transactions() {
+				toAddress := tx.To()
+				if toAddress != nil && tx.Data() != nil {
+					decodeTransactionInputData(toAddress, tx.Data(), pubSubClient)
+				}
+			}
+		}()
+	} else {
+		log.Info("Decoding is Disabled")
 	}
+
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
@@ -2479,12 +2495,7 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 
 // decodeTransactionInputData decodes the transaction input data using the ABI.
 // It handles specific methods and extracts relevant parameters for further processing.
-func decodeTransactionInputData(addr *common.Address, data []byte) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Warn("Recovered from panic in decodeTransactionInputData")
-		}
-	}()
+func decodeTransactionInputData(addr *common.Address, data []byte, client *pubsub.Client) {
 
 	if addr == nil {
 		log.Error("Invalid TX: addr is nil")
@@ -2536,20 +2547,20 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
 		if uri, ok := inputsMap["newuri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, "")
+			postDecodedInput(*addr, method.Name, uri, "", "erc-1155", client)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, "")
+			postDecodedInput(*addr, method.Name, uri, "", "erc-721", client)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xa1, 0x44, 0x81, 0x94}):
 		// Decode safeMint(address to, uint256 tokenId) -- Signature: 0xa1448194
 		if tokenID, ok := inputsMap["tokenId"]; ok {
 			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-721", client)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
@@ -2560,21 +2571,21 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
 		}
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, tokenIDStr)
+			postDecodedInput(*addr, method.Name, uri, tokenIDStr, "erc-721", client)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
 		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
 		if tokenID, ok := inputsMap["id"]; ok {
 			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
 		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
 		if ids, ok := inputsMap["id"]; ok {
 			tokenIDStr := fmt.Sprintf(`"[%v]"`, ids)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
@@ -2586,7 +2597,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 				return
 			}
 			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
@@ -2598,76 +2609,94 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 				return
 			}
 			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-			postDecodedInput(*addr, method.Name, "", tokenIDStr)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
 		}
 	}
 }
 
 // postDecodedInput post the decoded the URI data to the Endpoint.
-func postDecodedInput(addr common.Address, method string, uri string, tokenID string) {
+func postDecodedInput(addr common.Address, method string, uri string, tokenID string, token_standard string, client *pubsub.Client) {
 	origin := os.Getenv("ORIGIN")
 	if origin == "" {
 		origin = "op-geth"
 	}
 
-	payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"%s","token_id":%s}`,
+	payload := fmt.Sprintf(`{"contract":"%s","token_type":"%s",uri":"%s","method":"%s","origin":"%s","token_id":%s}`,
 		addr.Hex(),
+		token_standard,
 		uri,
 		method,
 		origin,
 		tokenID,
 	)
 
-	if err := publishMessage(payload); err != nil {
+	if err := publishMessage(payload, client); err != nil {
 		log.Error("Failed to publish message", "error", err)
 		return
 	}
 }
 
 // publishMessage publishes a message to a Google Pub/Sub topic.
-func publishMessage(msg string) error {
+func publishMessage(msg string, client *pubsub.Client) error {
+
 	ctx := context.Background()
-
-	projectID := os.Getenv("PUBSUB_PROJECT_ID")
-	if projectID == "" {
-		log.Error("Environment variable PUBSUB_PROJECT_ID is not set")
-		return fmt.Errorf("environment variable PUBSUB_PROJECT_ID is not set")
-	}
-
 	topicID := os.Getenv("PUBSUB_TOPIC_ID")
 	if topicID == "" {
-		log.Error("Environment variable PUBSUB_TOPIC_ID is not set")
 		return fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
 	}
 
-	credentialPath := os.Getenv("PUBSUB_CREDENTIAL_PATH")
-	if credentialPath == "" {
-		log.Error("Environment variable PUBSUB_CREDENTIAL_PATH is not set")
-		return fmt.Errorf("environment variable PUBSUB_CREDENTIAL_PATH is not set")
-	}
-
-	client, err := pubsub.NewClient(ctx, projectID, option.WithCredentialsFile(credentialPath))
-	if err != nil {
-		return fmt.Errorf("pubsub: NewClient: %w", err)
-	}
-	defer func() {
-		if err := client.Close(); err != nil {
-			log.Error("Failed to close Pub/Sub client", "error", err)
-		}
-	}()
-
-	payloadBytes := []byte(msg) // Convert payload string to bytes
-
 	t := client.Topic(topicID)
+	payloadBytes := []byte(msg)
+
 	result := t.Publish(ctx, &pubsub.Message{
 		Data: payloadBytes,
 	})
 
 	id, err := result.Get(ctx)
 	if err != nil {
+		log.Error("pubsub: result.Get:", "error", err)
 		return fmt.Errorf("pubsub: result.Get: %w", err)
+
 	}
 
-	log.Info("Published the Decoded payload", "msg ID", id)
+	log.Info("Published the Decoded payload", "payload ID", id)
 	return nil
+}
+
+func initPubSubClient() {
+	pubSubOnce.Do(func() {
+		var err error
+		pubSubClient, err = createPubSubClient()
+		if err != nil {
+			log.Error("Failed to create Pub/Sub client", "error", err)
+		}
+		log.Info("New Pub/Sub client created")
+
+	})
+}
+
+func createPubSubClient() (*pubsub.Client, error) {
+	ctx := context.Background()
+
+	projectID := os.Getenv("PUBSUB_PROJECT_ID")
+	if projectID == "" {
+		return nil, fmt.Errorf("environment variable PUBSUB_PROJECT_ID is not set")
+	}
+
+	topicID := os.Getenv("PUBSUB_TOPIC_ID")
+	if topicID == "" {
+		return nil, fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
+	}
+
+	credentialPath := os.Getenv("PUBSUB_CREDENTIAL_PATH")
+	if credentialPath == "" {
+		return nil, fmt.Errorf("environment variable PUBSUB_CREDENTIAL_PATH is not set")
+	}
+
+	client, err := pubsub.NewClient(ctx, projectID, option.WithCredentialsFile(credentialPath))
+	if err != nil {
+		return nil, fmt.Errorf("pubsub: NewClient: %w", err)
+	}
+
+	return client, nil
 }
