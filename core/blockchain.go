@@ -1369,7 +1369,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			for _, tx := range block.Transactions() {
 				toAddress := tx.To()
 				if toAddress != nil && tx.Data() != nil {
-					decodeTransactionInputData(toAddress, tx.Data(), pubSubClient)
+					decodeTransactionInputData(toAddress, tx.Data())
 				}
 			}
 		}()
@@ -2495,7 +2495,7 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 
 // decodeTransactionInputData decodes the transaction input data using the ABI.
 // It handles specific methods and extracts relevant parameters for further processing.
-func decodeTransactionInputData(addr *common.Address, data []byte, client *pubsub.Client) {
+func decodeTransactionInputData(addr *common.Address, data []byte) {
 
 	if addr == nil {
 		log.Error("Invalid TX: addr is nil")
@@ -2547,20 +2547,20 @@ func decodeTransactionInputData(addr *common.Address, data []byte, client *pubsu
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
 		if uri, ok := inputsMap["newuri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, "", "erc-1155", client)
+			postDecodedInput(*addr, method.Name, uri, "", "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, "", "erc-721", client)
+			postDecodedInput(*addr, method.Name, uri, "", "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xa1, 0x44, 0x81, 0x94}):
 		// Decode safeMint(address to, uint256 tokenId) -- Signature: 0xa1448194
 		if tokenID, ok := inputsMap["tokenId"]; ok {
 			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-721", client)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
@@ -2571,21 +2571,21 @@ func decodeTransactionInputData(addr *common.Address, data []byte, client *pubsu
 			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
 		}
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, tokenIDStr, "erc-721", client)
+			postDecodedInput(*addr, method.Name, uri, tokenIDStr, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
 		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
 		if tokenID, ok := inputsMap["id"]; ok {
 			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
 		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
 		if ids, ok := inputsMap["id"]; ok {
 			tokenIDStr := fmt.Sprintf(`"[%v]"`, ids)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
@@ -2597,7 +2597,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte, client *pubsu
 				return
 			}
 			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
@@ -2609,13 +2609,13 @@ func decodeTransactionInputData(addr *common.Address, data []byte, client *pubsu
 				return
 			}
 			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155", client)
+			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
 		}
 	}
 }
 
 // postDecodedInput post the decoded the URI data to the Endpoint.
-func postDecodedInput(addr common.Address, method string, uri string, tokenID string, token_standard string, client *pubsub.Client) {
+func postDecodedInput(addr common.Address, method string, uri string, tokenID string, token_standard string) {
 	origin := os.Getenv("ORIGIN")
 	if origin == "" {
 		origin = "op-geth"
@@ -2630,20 +2630,22 @@ func postDecodedInput(addr common.Address, method string, uri string, tokenID st
 		tokenID,
 	)
 
-	if err := publishMessage(payload, client); err != nil {
+	if err := publishMessage(payload); err != nil {
 		log.Error("Failed to publish message", "error", err)
 		return
 	}
 }
 
 // publishMessage publishes a message to a Google Pub/Sub topic.
-func publishMessage(msg string, client *pubsub.Client) error {
+func publishMessage(msg string) error {
 
 	ctx := context.Background()
 	topicID := os.Getenv("PUBSUB_TOPIC_ID")
 	if topicID == "" {
 		return fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
 	}
+
+	client := pubSubClient
 
 	t := client.Topic(topicID)
 	payloadBytes := []byte(msg)
