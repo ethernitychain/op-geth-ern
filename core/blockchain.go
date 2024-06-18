@@ -2588,6 +2588,17 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
 		}
 
+	case bytes.Equal(methodSigData, []byte{0xd3, 0xfc, 0x98, 0x64}):
+		// Decode mint(address _to, uint256 _tokenId, string memory tokenURI_) -- Signature: 0xd3fc9864
+		tokenIDStr := ""
+		if tokenID, ok := inputsMap["_tokenId"]; ok {
+
+			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
+		}
+		if uri, ok := inputsMap["tokenURI_"].(string); ok {
+			postDecodedInput(*addr, method.Name, uri, tokenIDStr, "erc-721")
+		}
+		
 	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
 		tokenIDStr := "[]"
