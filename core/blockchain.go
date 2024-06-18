@@ -2621,7 +2621,7 @@ func postDecodedInput(addr common.Address, method string, uri string, tokenID st
 		origin = "op-geth"
 	}
 
-	payload := fmt.Sprintf(`{"contract":"%s","token_type":"%s",uri":"%s","method":"%s","origin":"%s","token_id":%s}`,
+	payload := fmt.Sprintf(`{"contract":"%s","token_type":"%s","uri":"%s","method":"%s","origin":"%s","token_id":%s}`,
 		addr.Hex(),
 		token_standard,
 		uri,
