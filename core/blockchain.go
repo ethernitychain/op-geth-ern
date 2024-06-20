@@ -2547,108 +2547,108 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
 		if uri, ok := inputsMap["newuri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, "", "erc-1155")
+			postDecodedInput(*addr, "setURI", uri, nil, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, "", "erc-721")
+			postDecodedInput(*addr, "safeMint", uri, nil, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xa1, 0x44, 0x81, 0x94}):
 		// Decode safeMint(address to, uint256 tokenId) -- Signature: 0xa1448194
-		if tokenID, ok := inputsMap["tokenId"]; ok {
-			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-721")
+		if tokenID, ok := inputsMap["tokenId"].(*big.Int); ok {
+			postDecodedInput(*addr, "safeMint", "", []*big.Int{tokenID}, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
 		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
-		tokenIDStr := ""
-		if tokenID, ok := inputsMap["tokenId"]; ok {
-
-			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
+		tokenIDs := []*big.Int{}
+		if tokenID, ok := inputsMap["tokenId"].(*big.Int); ok {
+			tokenIDs = append(tokenIDs, tokenID)
 		}
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, tokenIDStr, "erc-721")
+			postDecodedInput(*addr, "safeMint", uri, tokenIDs, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
 		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
-		if tokenID, ok := inputsMap["id"]; ok {
-			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
+		if tokenID, ok := inputsMap["id"].(*big.Int); ok {
+			postDecodedInput(*addr, "mint", "", []*big.Int{tokenID}, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x40, 0xc1, 0x0f, 0x19}):
 		// Decode mint(address _to, uint256 _tokenId) -- Signature: 0x40c10f19
-		if tokenID, ok := inputsMap["_tokenId"]; ok {
-			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-721")
+		if tokenID, ok := inputsMap["_tokenId"].(*big.Int); ok {
+			postDecodedInput(*addr, "mint", "", []*big.Int{tokenID}, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
 		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
-		if ids, ok := inputsMap["id"]; ok {
-			tokenIDStr := fmt.Sprintf(`"[%v]"`, ids)
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
+		if ids, ok := inputsMap["id"].(*big.Int); ok {
+			postDecodedInput(*addr, "mint", "", []*big.Int{ids}, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd3, 0xfc, 0x98, 0x64}):
 		// Decode mint(address _to, uint256 _tokenId, string memory tokenURI_) -- Signature: 0xd3fc9864
-		tokenIDStr := ""
-		if tokenID, ok := inputsMap["_tokenId"]; ok {
-
-			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
+		tokenIDs := []*big.Int{}
+		if tokenID, ok := inputsMap["_tokenId"].(*big.Int); ok {
+			tokenIDs = append(tokenIDs, tokenID)
 		}
 		if uri, ok := inputsMap["tokenURI_"].(string); ok {
-			postDecodedInput(*addr, method.Name, uri, tokenIDStr, "erc-721")
+			postDecodedInput(*addr, "mint", uri, tokenIDs, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
-		tokenIDStr := "[]"
-		if ids, ok := inputsMap["ids"]; ok {
-			idsArray, err := json.Marshal(ids)
-			if err != nil {
-				return
-			}
-			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
+		if ids, ok := inputsMap["ids"].([]*big.Int); ok {
+			postDecodedInput(*addr, "mintBatch", "", ids, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
-		tokenIDStr := "[]"
-		if ids, ok := inputsMap["ids"]; ok {
-			idsArray, err := json.Marshal(ids)
-			if err != nil {
-				return
-			}
-			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-			postDecodedInput(*addr, method.Name, "", tokenIDStr, "erc-1155")
+		if ids, ok := inputsMap["ids"].([]*big.Int); ok {
+			postDecodedInput(*addr, "mintBatch", "", ids, "erc-1155")
 		}
 	}
 }
 
 // postDecodedInput post the decoded the URI data to the Endpoint.
-func postDecodedInput(addr common.Address, method string, uri string, tokenID string, token_standard string) {
+func postDecodedInput(addr common.Address, method string, uri string, tokenIDs []*big.Int, tokenStandard string) {
 	origin := os.Getenv("ORIGIN")
 	if origin == "" {
 		origin = "op-geth"
 	}
+	tokenIDStrings := []string{}
+	for _, id := range tokenIDs {
+		tokenIDStrings = append(tokenIDStrings, id.String())
+	}
 
-	payload := fmt.Sprintf(`{"contract":"%s","token_type":"%s","uri":"%s","method":"%s","origin":"%s","token_id":%s}`,
-		addr.Hex(),
-		token_standard,
-		uri,
-		method,
-		origin,
-		tokenID,
-	)
+	payload := struct {
+		Contract  string   `json:"contract"`
+		Uri       string   `json:"uri"`
+		Method    string   `json:"method"`
+		Origin    string   `json:"origin"`
+		TokenID   []string `json:"token_id"`
+		TokenType string   `json:"token_type"`
+	}{
+		Contract:  addr.Hex(),
+		TokenType: tokenStandard,
+		Uri:       uri,
+		Method:    method,
+		Origin:    origin,
+		TokenID:   tokenIDStrings,
+	}
 
-	if err := publishMessage(payload); err != nil {
+	// Marshal the payload to JSON
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Error("Failed to marshal payload:", err)
+		return
+	}
+
+	if err := publishMessage(string(payloadBytes)); err != nil {
 		log.Error("Failed to publish message", "error", err)
 		return
 	}
@@ -2678,8 +2678,8 @@ func publishMessage(msg string) error {
 		return fmt.Errorf("pubsub: result.Get: %w", err)
 
 	}
-
 	log.Info("Published the Decoded payload", "payload ID", id)
+	log.Info("Published Payload:", msg)
 	return nil
 }
 
