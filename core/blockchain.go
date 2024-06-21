@@ -2621,34 +2621,25 @@ func postDecodedInput(addr common.Address, method string, uri string, tokenIDs [
 		origin = "op-geth"
 	}
 
-	// URI for JSON safety
-	URI, err := json.Marshal(uri)
-	if err != nil {
-		log.Error("Failed to marshal URI:", err)
-		return
+	tokenIDStrings := []string{}
+	for _, id := range tokenIDs {
+		tokenIDStrings = append(tokenIDStrings, id.String())
 	}
-
-	var tokenIDString string
-	tokenIDStrings := make([]string, len(tokenIDs))
-	for i, id := range tokenIDs {
-		tokenIDStrings[i] = id.String()
-	}
-	tokenIDString = "[" + strings.Join(tokenIDStrings, ",") + "]"
 
 	payload := struct {
-		Contract  string `json:"contract"`
-		Uri       string `json:"uri"`
-		Method    string `json:"method"`
-		Origin    string `json:"origin"`
-		TokenID   string `json:"token_id"`
-		TokenType string `json:"token_type"`
+		Contract  string   `json:"contract"`
+		Uri       string   `json:"uri"`
+		Method    string   `json:"method"`
+		Origin    string   `json:"origin"`
+		TokenID   []string `json:"token_id"`
+		TokenType string   `json:"token_type"`
 	}{
 		Contract:  addr.Hex(),
 		TokenType: tokenStandard,
-		Uri:       string(URI),
+		Uri:       uri,
 		Method:    method,
 		Origin:    origin,
-		TokenID:   tokenIDString,
+		TokenID:   tokenIDStrings,
 	}
 
 	// Marshal the payload to JSON
