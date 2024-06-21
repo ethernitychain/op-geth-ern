@@ -2550,6 +2550,12 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 			postDecodedInput(*addr, "setURI", uri, nil, "erc-1155")
 		}
 
+	case bytes.Equal(methodSigData, []byte{0x55, 0xf8, 0x04, 0xb3}):
+		// Decode setBaseURI(string memory baseURI_) -- Signature: 0x55f804b3
+		if uri, ok := inputsMap["baseURI_"].(string); ok {
+			postDecodedInput(*addr, "setURI", uri, nil, "erc-721")
+		}
+
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
