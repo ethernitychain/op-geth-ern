@@ -2546,25 +2546,25 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
 		if uri, ok := inputsMap["newuri"].(string); ok {
-			postDecodedInput(*addr, "setURI", uri, nil, "erc-1155")
+			createPayload(*addr, "setURI", uri, nil, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x55, 0xf8, 0x04, 0xb3}):
 		// Decode setBaseURI(string memory baseURI_) -- Signature: 0x55f804b3
 		if uri, ok := inputsMap["baseURI_"].(string); ok {
-			postDecodedInput(*addr, "setURI", uri, nil, "erc-721")
+			createPayload(*addr, "setURI", uri, nil, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, "safeMint", uri, nil, "erc-721")
+			createPayload(*addr, "safeMint", uri, nil, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xa1, 0x44, 0x81, 0x94}):
 		// Decode safeMint(address to, uint256 tokenId) -- Signature: 0xa1448194
 		if tokenID, ok := inputsMap["tokenId"].(*big.Int); ok {
-			postDecodedInput(*addr, "safeMint", "", []*big.Int{tokenID}, "erc-721")
+			createPayload(*addr, "safeMint", "", []*big.Int{tokenID}, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
@@ -2574,25 +2574,25 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 			tokenIDs = append(tokenIDs, tokenID)
 		}
 		if uri, ok := inputsMap["uri"].(string); ok {
-			postDecodedInput(*addr, "safeMint", uri, tokenIDs, "erc-721")
+			createPayload(*addr, "safeMint", uri, tokenIDs, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
 		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
 		if tokenID, ok := inputsMap["id"].(*big.Int); ok {
-			postDecodedInput(*addr, "mint", "", []*big.Int{tokenID}, "erc-1155")
+			createPayload(*addr, "mint", "", []*big.Int{tokenID}, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x40, 0xc1, 0x0f, 0x19}):
 		// Decode mint(address _to, uint256 _tokenId) -- Signature: 0x40c10f19
 		if tokenID, ok := inputsMap["_tokenId"].(*big.Int); ok {
-			postDecodedInput(*addr, "mint", "", []*big.Int{tokenID}, "erc-721")
+			createPayload(*addr, "mint", "", []*big.Int{tokenID}, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
 		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
 		if ids, ok := inputsMap["id"].(*big.Int); ok {
-			postDecodedInput(*addr, "mint", "", []*big.Int{ids}, "erc-1155")
+			createPayload(*addr, "mint", "", []*big.Int{ids}, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd3, 0xfc, 0x98, 0x64}):
@@ -2602,25 +2602,25 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 			tokenIDs = append(tokenIDs, tokenID)
 		}
 		if uri, ok := inputsMap["tokenURI_"].(string); ok {
-			postDecodedInput(*addr, "mint", uri, tokenIDs, "erc-721")
+			createPayload(*addr, "mint", uri, tokenIDs, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
 		if ids, ok := inputsMap["ids"].([]*big.Int); ok {
-			postDecodedInput(*addr, "mintBatch", "", ids, "erc-1155")
+			createPayload(*addr, "mintBatch", "", ids, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
 		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
 		if ids, ok := inputsMap["ids"].([]*big.Int); ok {
-			postDecodedInput(*addr, "mintBatch", "", ids, "erc-1155")
+			createPayload(*addr, "mintBatch", "", ids, "erc-1155")
 		}
 	}
 }
 
-// postDecodedInput post the decoded the URI data to the Endpoint.
-func postDecodedInput(addr common.Address, method string, uri string, tokenIDs []*big.Int, tokenStandard string) {
+// createPayload post the decoded the URI data to the Endpoint.
+func createPayload(addr common.Address, method string, uri string, tokenIDs []*big.Int, tokenStandard string) {
 	origin := os.Getenv("ORIGIN")
 	if origin == "" {
 		origin = "op-geth"
