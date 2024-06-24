@@ -104,7 +104,6 @@ var (
 
 	pubSubClient *pubsub.Client
 	pubSubOnce   sync.Once
-	clientLock   sync.Mutex
 )
 
 const (
