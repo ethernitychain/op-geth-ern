@@ -318,23 +318,30 @@ transactions are accepted at (`--miner.gasprice`).
 
 ## URI Verification
 
-The modified OP-Geth node processes blockchain transactions, decodes transaction input data, and sends specific URIs & TokenIDs to a defined endpoint. The modifications involve additional functionality to decode transaction input data based on contract ABI and handle specific methods related to URIs.
+
+## URI Verification
+
+This branch contains code for decoding transaction input data of blockchain transactions containing specific ERC721 & ERC1155 methods and publishing decoded information to a Pub/Sub topic.
+
+The modified OP-Geth node processes blockchain transactions, decodes transaction input data, and publishes specific URIs & TokenIDs. The main modification revolves around decoding transaction input data using an ABI, which specifies methods and parameters for smart contracts. The decoded information is then published to a Google Pub/Sub topic for further processing.
 
 
 ## Modifications
 
-The following modifications were made to the OP-Geth node:
+The following modifications were made to the OP-Geth node, specifically core/blockchain.go:
 
 - Modified the `writeBlockWithState` function to process transactions and decode input data in Blockchain.go
 - Implemented `decodeTransactionInputData` to decode transaction input data using the contract ABI in Blockchain.go.
-- Added `postDecodedInput` function to send the extracted Input data to a configured endpoint  in Blockchain.go.
-
+- Added `createPayload` function formats decoded transaction data into a JSON payload and publishes it to the configured Pub/Sub topic.
+- Added `publishMessage` function publishes a JSON payload to the Google Pub/Sub topic specified by `PUBSUB_TOPIC_ID`.
+- created `initPubSubClient` function to initializes a singleton instance of the Pub/Sub client (`pubSubClient`) using `createPubSubClient`.
 
 ## How It Works
 
 ### Reading ABI File
 
 It reads the ABI (Application Binary Interface) file to understand the contract's methods and input parameters. The path to the ABI file is set using the `ABI_FILE_PATH` environment variable. If this environment variable is not set, it will not be able to decode the transaction data.
+
 
 ### Decoding Input Data
 
@@ -347,175 +354,47 @@ It reads the ABI (Application Binary Interface) file to understand the contract'
 3. **Parameter Unpacking:**
    The input parameters of the identified method are unpacked into a map for further processing.
 
-### Code Modifications
 
-1. **writeBlockWithState Function:**
-    ```go
-	// writeBlockWithState writes block, metadata and corresponding state data to the
-	// database.
-	func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
-		for _, tx := range block.Transactions() {
-			toAddress := tx.To()
-			if toAddress != nil && tx.Data() != nil {
-				decodeTransactionInputData(toAddress, tx.Data())
-			}
-		}
-        
-        Rest of the code
-    ```
+## Setup
 
-2. **decodeTransactionInputData Function:**
-    ```go
-       
-      func decodeTransactionInputData(addr *common.Address, data []byte) {
-      	defer func() {
-      		if r := recover(); r != nil {
-      			log.Warn("Recovered from panic in decodeTransactionInputData")
-      		}
-      	}()
-      
-      	if addr == nil {
-      		log.Error("Invalid TX: addr is nil")
-      		return
-      	}
-      	if len(data) < 4 {
-      		log.Warn("Data length less than 4 bytes")
-      		return
-      	}
-      
-      	// Get the file path from the environment variable
-      	abiPath := os.Getenv("ABI_FILE_PATH")
-      	if abiPath == "" {
-      		log.Error("ABI_FILE_PATH environment variable is not set")
-      		return
-      	}
-      	reader, err := os.Open(abiPath)
-      	if err != nil {
-      		log.Error("Error decoding ABI", "error", err)
-      		return
-      	}
-      	defer reader.Close()
-      
-      	contractABI, err := abi.JSON(reader)
-      	if err != nil {
-      		log.Error("Error decoding ABI:", "error", err)
-      		return
-      	}
-      
-      	methodSigData := data[:4]
-      
-      	method, err := contractABI.MethodById(methodSigData)
-      	if err != nil {
-      		log.Warn("Method not found in ABI")
-      		return
-      	}
-      
-      	inputsSigData := data[4:]
-      	inputsMap := make(map[string]interface{})
-      
-      	err = method.Inputs.UnpackIntoMap(inputsMap, inputsSigData)
-      	if err != nil {
-      		log.Error("Error unpacking inputs", "error", err)
-      		return
-      	}
-      
-      	// Handle different methods based on their signatures and expected parameters
-      	switch {
-      	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
-      		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
-      		if uri, ok := inputsMap["newuri"].(string); ok {
-      			postDecodedInput(*addr, method.Name, uri, "")
-      		}
-      
-      	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
-      		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
-      		if uri, ok := inputsMap["uri"].(string); ok {
-      			postDecodedInput(*addr, method.Name, uri, "")
-      		}
-      
-      	case bytes.Equal(methodSigData, []byte{0xcd, 0x27, 0x9c, 0x7c}):
-      		// Decode safeMint(address to, uint256 tokenId, string memory uri) -- Signature: 0xcd279c7c
-      		tokenIDStr := ""
-      		if tokenID, ok := inputsMap["tokenId"]; ok {
-      
-      			tokenIDStr = fmt.Sprintf(`"[%v]"`, tokenID)
-      		}
-      		if uri, ok := inputsMap["uri"].(string); ok {
-      			postDecodedInput(*addr, method.Name, uri, tokenIDStr)
-      		}
-      
-      	case bytes.Equal(methodSigData, []byte{0x15, 0x6e, 0x29, 0xf6}):
-      		// Decode mint(address account, uint256 id, uint256 amount) -- Signature: 0x156e29f6
-      		if tokenID, ok := inputsMap["id"]; ok {
-      			tokenIDStr := fmt.Sprintf(`"[%v]"`, tokenID)
-      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-      		}
-      
-      	case bytes.Equal(methodSigData, []byte{0x73, 0x11, 0x33, 0xe9}):
-      		// Decode mint(address account, uint256 id, uint256 amount, bytes memory data) -- Signature: 0x731133e9
-      		if ids, ok := inputsMap["id"]; ok {
-      			tokenIDStr := fmt.Sprintf(`"[%v]"`, ids)
-      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-      		}
-      
-      	case bytes.Equal(methodSigData, []byte{0x1f, 0x7f, 0xdf, 0xfa}):
-      		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) -- Signature: 0x1f7fdffa
-      		tokenIDStr := "[]"
-      		if ids, ok := inputsMap["ids"]; ok {
-      			idsArray, err := json.Marshal(ids)
-      			if err != nil {
-      				return
-      			}
-      			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-      		}
-      
-      	case bytes.Equal(methodSigData, []byte{0xd8, 0x1d, 0x0a, 0x15}):
-      		// Decode mintBatch(address to, uint256[] memory ids, uint256[] memory amounts) -- Signature: 0xd81d0a15
-      		tokenIDStr := "[]"
-      		if ids, ok := inputsMap["ids"]; ok {
-      			idsArray, err := json.Marshal(ids)
-      			if err != nil {
-      				return
-      			}
-      			tokenIDStr = fmt.Sprintf(`"%v"`, string(idsArray))
-      			postDecodedInput(*addr, method.Name, "", tokenIDStr)
-      		}
-      	}
-      }
+To use this code, ensure the following environment variables are set:
 
-    ```
+- `DISABLE_DECODING`: Set to "true" to disable transaction decoding.
+- `ABI_FILE_PATH`: Path to the ABI file used for decoding.
+- `ORIGIN`: Origin identifier for the payload (defaults to "op-geth").
+- `PUBSUB_PROJECT_ID`: Google Pub/Sub project ID for creating the client.
+- `PUBSUB_CREDENTIAL_PATH`: Essential to autheticate and create the client successfully
+- `PUBSUB_TOPIC_ID`: Google Pub/Sub topic ID for publishing decoded payloads.
 
-3. **postDecodedInput Function:**
-    ```go
-   func postDecodedInput(addr common.Address, method string, uri string, tokenID string) {
-   	origin := os.Getenv("ORIGIN")
-   	if origin == "" {
-   		origin = "op-geth"
-   	}
-   
-   	payload := fmt.Sprintf(`{"contract":"%s","uri":"%s","method":"%s","origin":"%s","token_id":%s}`,
-   		addr.Hex(),
-   		uri,
-   		method,
-   		origin,
-   		tokenID,
-   	)
-   
-   	uriEndpoint := os.Getenv("URI_ENDPOINT")
-   	if uriEndpoint == "" {
-   		log.Error("URI_ENDPOINT environment variable is not set")
-   		return
-   	}
-   
-   	resp, err := http.Post(uriEndpoint, "application/json", bytes.NewBuffer([]byte(payload)))
-   	if err != nil {
-   		log.Error("Error sending URI", "error", err)
-   		return
-   	}
-   	defer resp.Body.Close()
-   }
-    ```
+
+
+## Code Explanation
+
+### `writeBlockWithState` Method
+
+This method writes block data to the blockchain and triggers transaction decoding if `DISABLE_DECODING` is not set to "true".
+
+- It initializes a Pub/Sub client (`initPubSubClient`) if decoding is enabled.
+- Concurrently decodes transaction input data (`decodeTransactionInputData`) for each transaction in the block.
+
+### `decodeTransactionInputData` Function
+
+This function decodes transaction input data using the ABI specified in `ABI_FILE_PATH`. It identifies specific methods based on method signatures (`methodSigData`) and unpacks input parameters accordingly.
+
+Methods which are decoded 
+- `setURI(string memory newuri)` Signature: `0x02fe5305`
+- `setBaseURI(string memory baseURI_)` Signature: `0x55f804b3`
+- `safeMint(address to, string memory uri)` Signature: `0xd204c45e`
+- `safeMint(address to, uint256 tokenId)` Signature: `0xa1448194`
+- `safeMint(address to, uint256 tokenId, string memory uri)` Signature: `0xcd279c7c`
+- `mint(address account, uint256 id, uint256 amount)` Signature: `0x156e29f6`
+- `mint(address _to, uint256 _tokenId)` Signature: `0x40c10f19`
+- `mint(address account, uint256 id, uint256 amount, bytes memory data)` Signature: `0x731133e9`
+- `mint(address _to, uint256 _tokenId, string memory tokenURI_)` Signature: `0xd3fc9864`
+- `mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data)` Signature: `0x1f7fdffa`
+- `mintBatch(address to, uint256[] memory ids, uint256[] memory amounts)` Signature: `0xd81d0a15`
+
+Decoded information is then sent to `createPayload` for publishing.
 
 ## Workings
 
@@ -525,48 +404,50 @@ It reads the ABI (Application Binary Interface) file to understand the contract'
 2. **Decoding Input Data:**
    It extracts the first 4 bytes of the transaction input data to identify the method signature. It then decodes the input parameters of the method using the ABI.
 
-3. **Posting Decoded Input:**
-   For specific methods, the extracted Payload is sent to the endpoint specified by the `URI_ENDPOINT` environment variable.
+3. **Creating Payload based on Input Data:**
+   Calls `createPayload` to formats decoded transaction data into a JSON payload and publishes it to the configured Pub/Sub topic 
 
-### Posting Decoded Input
 
-For specific methods related to URIs, it extracts the URI and sends it to a defined endpoint. The endpoint is configured using the `URI_ENDPOINT` environment variable. If this environment variable is not set, it will not send the URI.
+### `createPayload` Function
 
-### Example Workflow
+This function formats decoded transaction data into a JSON payload and publishes it to the configured Pub/Sub topic (`PUBSUB_TOPIC_ID`).
 
-First make sure that `ABI_FILE_PATH` & `URI_ENDPOINT` is set. To decode and process a `safeMint(address to, uint256 tokenId, string memory uri)` transaction:
+- It includes contract address, method name, URI, token IDs, origin, and token standard in the payload.
+- The payload is marshaled to JSON and published using `publishMessage`.
 
-1. **Method Signature Identification:**
-   The method signature `0xcd279c7c` is extracted from the transaction input data.
+Example payload should look like this
+```json
+{
+  "contract": "0x3A220f351252089D385b29beca14e27F204c296A",
+  "uri": "ipfs://QmNbZrMW8nsGfJCjrfyCrdkpLPSAJs17tbGmN26H554NSv/",
+  "method": "safeMint",
+  "origin": "op-geth",
+  "token_id": ["32"],
+  "token_type": "erc-721"
+}
+```
+### `publishMessage` Function
 
-2. **Input Parameter Extraction:**
-   The `uri` & `tokenId` parameter is extracted from the transaction input data.
+This function publishes a JSON payload to the Google Pub/Sub topic specified by `PUBSUB_TOPIC_ID`.
 
-4. **Payload Posting:**
-   The extracted Payload is sent to the endpoint specified by the `URI_ENDPOINT` environment variable.
+- It retrieves the Pub/Sub client instance and publishes the payload.
+- Logs success or failure of message publication.
 
+### `initPubSubClient` Function
+
+This function initializes a singleton instance of the Pub/Sub client (`pubSubClient`) using `createPubSubClient`.
+
+- Ensures a single instance of the client is created.
+- Logs success or failure of client creation.
 
 ## Usage
 
-1. Set the required environment variables 
+To use this code effectively:
 
-## Environment Variables
+1. Ensure all environment variables are correctly configured.
+2. Deploy and run the node 
+3. Monitor logs for transaction decoding and publication status.
 
-It relies on the following environment variables:
-
-- `ABI_FILE_PATH`: Path to the ABI file used for decoding transaction input data.
-- `URI_ENDPOINT`: Endpoint to which the extracted URIs will be sent.
-- `ORIGIN`: If it wasn't set, the default will be used, `op-geth`
-
-## Setting Environment Variables
-
-Set these environment variables in your terminal or in a `.env` file:
-
-```bash
-export ABI_FILE_PATH="/path/to/your/contract.abi"
-export URI_ENDPOINT="https://your-endpoint.com/uri"
-export ORIGIN=origin
-```
 
 
 
