@@ -319,8 +319,6 @@ transactions are accepted at (`--miner.gasprice`).
 ## URI Verification
 
 
-## URI Verification
-
 This branch contains code for decoding transaction input data of blockchain transactions containing specific ERC721 & ERC1155 methods and publishing decoded information to a Pub/Sub topic.
 
 The modified OP-Geth node processes blockchain transactions, decodes transaction input data, and publishes specific URIs & TokenIDs. The main modification revolves around decoding transaction input data using an ABI, which specifies methods and parameters for smart contracts. The decoded information is then published to a Google Pub/Sub topic for further processing.
@@ -449,6 +447,76 @@ To use this code effectively:
 3. Monitor logs for transaction decoding and publication status.
 
 
+
+
+# Resyncing the node
+
+This guide provides step-by-step instructions on how to resync the node if it goes down due to any unforeseen circumstances by  importing a snapshot into your Geth setup without corrupting the existing setup.
+
+## Prerequisites
+
+- Ensure you have the snapshot file ready for import. Ask gelato to provide the snapshot
+- Download and copy the snapshot into the server
+```bash
+# Copy snapshot file to server
+scp -i ~/.ssh/priv_key /path/to/local/snapshot username@192.158.1.38:/path/to/copy
+```
+
+## Steps to Import Snapshot
+
+1. **Stop the Geth Service**
+
+   First, stop the Geth service to ensure that no data is being written while you import the snapshot.
+
+```bash
+# Stop the Geth service
+sudo systemctl stop op-geth
+```
+
+
+2. **Backup Your Current Data**
+
+Before making any significant changes, it’s always a good practice to backup your current data.
+
+```bash
+# Backup current data
+cp -r /opt/ern-readonly/var/lib/op-geth/datadir /opt/ern-readonly/var/lib/op-geth/datadir_backup
+```
+
+3. **Set DISABLE_DECODING to true**
+
+Make sure that DISABLE_DECODING is set to true, while importing. Its important, otherwise, it will republish all the past messages by decoding the transactions. 
+```bash
+# Disable transaction decoding
+export DISABLE_DECODING=true
+```
+
+4. **Import the Snapshot**
+
+Use the Geth import command to load the snapshot into your data directory. Replace `/path/to/snapshot` with the actual path to your snapshot file.
+
+```bash
+# Import the snapshot
+/opt/ern-readonly/bin/geth --datadir /opt/ern-readonly/var/lib/op-geth/datadir import /path/to/snapshot
+```
+
+4. **Start the Geth Service**
+
+After the import is complete, start the Geth service again.
+```bash
+# Start the Geth service
+sudo systemctl start op-geth
+```
+
+
+5. **Verify the Import**
+
+Monitor the service logs to ensure that everything is working correctly after the import.
+```bash
+
+# Verify the import
+sudo journalctl -u op-geth -f
+```
 
 
 ## Contribution
