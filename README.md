@@ -329,10 +329,11 @@ The modified OP-Geth node processes blockchain transactions, decodes transaction
 The following modifications were made to the OP-Geth node, specifically core/blockchain.go:
 
 - Modified the `writeBlockWithState` function to process transactions and decode input data in Blockchain.go
+- created `initDecoding` function to initializes a singleton ABI instance to ensures that the ABI file is read only once. `initContractABI` is the function that reads and parses the ABI file
 - Implemented `decodeTransactionInputData` to decode transaction input data using the contract ABI in Blockchain.go.
 - Added `createPayload` function formats decoded transaction data into a JSON payload and publishes it to the configured Pub/Sub topic.
 - Added `publishMessage` function publishes a JSON payload to the Google Pub/Sub topic specified by `PUBSUB_TOPIC_ID`.
-- created `initPubSubClient` function to initializes a singleton instance of the Pub/Sub client (`pubSubClient`) using `createPubSubClient`.
+- created `initDecoding` function to initializes a singleton instance of the Pub/Sub client (`pubSubClient`) using `createPubSubClient`.
 
 ## How It Works
 
@@ -377,7 +378,7 @@ This method writes block data to the blockchain and triggers transaction decodin
 
 ### `decodeTransactionInputData` Function
 
-This function decodes transaction input data using the ABI specified in `ABI_FILE_PATH`. It identifies specific methods based on method signatures (`methodSigData`) and unpacks input parameters accordingly.
+This function decodes transaction input data using the parsed ABI in `contractABI`. It identifies specific methods based on method signatures (`methodSigData`) and unpacks input parameters accordingly.
 
 Methods which are decoded 
 - `setURI(string memory newuri)` Signature: `0x02fe5305`

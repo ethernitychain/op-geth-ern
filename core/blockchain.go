@@ -103,7 +103,8 @@ var (
 	errInvalidNewChain      = errors.New("invalid new chain")
 
 	pubSubClient *pubsub.Client
-	pubSubOnce   sync.Once
+	contractABI  abi.ABI
+	once         sync.Once
 )
 
 const (
@@ -1362,7 +1363,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Check if DISABLE_DECODING environment variable is not true
 	disableDecoding := os.Getenv("DISABLE_DECODING")
 	if disableDecoding != "true" {
-		initPubSubClient()
+		initDecoding()
 		go func() {
 			// Process transactions
 			for _, tx := range block.Transactions() {
@@ -2492,6 +2493,30 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
 }
 
+// initContractABI initializes the contract ABI by reading it from the file.
+func initContractABI() {
+	// Get the file path from the environment variable
+	abiPath := os.Getenv("ABI_FILE_PATH")
+	if abiPath == "" {
+		log.Error("ABI_FILE_PATH environment variable is not set")
+		return
+	}
+
+	reader, err := os.Open(abiPath)
+	if err != nil {
+		log.Error("Error decoding ABI", "error", err)
+		return
+	}
+	defer reader.Close()
+
+	contractABI, err = abi.JSON(reader)
+	if err != nil {
+		log.Error("Error decoding ABI:", "error", err)
+		return
+	}
+	log.Info("contractABI initialised")
+}
+
 // decodeTransactionInputData decodes the transaction input data using the ABI.
 // It handles specific methods and extracts relevant parameters for further processing.
 func decodeTransactionInputData(addr *common.Address, data []byte) {
@@ -2502,25 +2527,6 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	}
 	if len(data) < 4 {
 		log.Warn("Data length less than 4 bytes")
-		return
-	}
-
-	// Get the file path from the environment variable
-	abiPath := os.Getenv("ABI_FILE_PATH")
-	if abiPath == "" {
-		log.Error("ABI_FILE_PATH environment variable is not set")
-		return
-	}
-	reader, err := os.Open(abiPath)
-	if err != nil {
-		log.Error("Error decoding ABI", "error", err)
-		return
-	}
-	defer reader.Close()
-
-	contractABI, err := abi.JSON(reader)
-	if err != nil {
-		log.Error("Error decoding ABI:", "error", err)
 		return
 	}
 
@@ -2689,8 +2695,19 @@ func publishMessage(msg string) error {
 	return nil
 }
 
+func initDecoding() {
+
+	// Read contractABI once to optimise I/O operations, the ABI is initialized only once
+	once.Do(initContractABI)
+
+	// create pubsub client once to optimise operations.
+	initPubSubClient()
+}
+
+
 func initPubSubClient() {
-	pubSubOnce.Do(func() {
+	// create pubsub client once to optimise operations.
+	once.Do(func() {
 		var err error
 		pubSubClient, err = createPubSubClient()
 		if err != nil {
