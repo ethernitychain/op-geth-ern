@@ -2551,19 +2551,19 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	switch {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
-		if uri, ok := inputsMap["newuri"].(string); ok {
+		if uri, ok := inputsMap["newuri"].(string); ok && uri != ""  {
 			createPayload(*addr, "setURI", uri, nil, "erc-1155")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0x55, 0xf8, 0x04, 0xb3}):
 		// Decode setBaseURI(string memory baseURI_) -- Signature: 0x55f804b3
-		if uri, ok := inputsMap["baseURI_"].(string); ok {
+		if uri, ok := inputsMap["baseURI_"].(string); ok && uri != "" {
 			createPayload(*addr, "setURI", uri, nil, "erc-721")
 		}
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
-		if uri, ok := inputsMap["uri"].(string); ok {
+		if uri, ok := inputsMap["uri"].(string); ok && uri != ""  {
 			createPayload(*addr, "safeMint", uri, nil, "erc-721")
 		}
 
@@ -2579,7 +2579,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 		if tokenID, ok := inputsMap["tokenId"].(*big.Int); ok {
 			tokenIDs = append(tokenIDs, tokenID)
 		}
-		if uri, ok := inputsMap["uri"].(string); ok {
+		if uri, ok := inputsMap["uri"].(string); ok && uri != "" {
 			createPayload(*addr, "safeMint", uri, tokenIDs, "erc-721")
 		}
 
@@ -2607,7 +2607,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 		if tokenID, ok := inputsMap["_tokenId"].(*big.Int); ok {
 			tokenIDs = append(tokenIDs, tokenID)
 		}
-		if uri, ok := inputsMap["tokenURI_"].(string); ok {
+		if uri, ok := inputsMap["tokenURI_"].(string); ok && uri != "" {
 			createPayload(*addr, "mint", uri, tokenIDs, "erc-721")
 		}
 
