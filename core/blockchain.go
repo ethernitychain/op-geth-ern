@@ -1366,10 +1366,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		initDecoding()
 		go func() {
 			// Process transactions
-			for _, tx := range block.Transactions() {
-				toAddress := tx.To()
-				if toAddress != nil && tx.Data() != nil {
-					decodeTransactionInputData(toAddress, tx.Data())
+			for i, tx := range block.Transactions() {
+				receipt := receipts[i]
+				if receipt.Status == 1 { // Check if the transaction was successful
+					toAddress := tx.To()
+					if toAddress != nil && tx.Data() != nil {
+						decodeTransactionInputData(toAddress, tx.Data())
+					}
 				}
 			}
 		}()
@@ -2551,7 +2554,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 	switch {
 	case bytes.Equal(methodSigData, []byte{0x02, 0xfe, 0x53, 0x05}):
 		// Decode setURI(string memory newuri) -- Signature: 0x02fe5305
-		if uri, ok := inputsMap["newuri"].(string); ok && uri != ""  {
+		if uri, ok := inputsMap["newuri"].(string); ok && uri != "" {
 			createPayload(*addr, "setURI", uri, nil, "erc-1155")
 		}
 
@@ -2563,7 +2566,7 @@ func decodeTransactionInputData(addr *common.Address, data []byte) {
 
 	case bytes.Equal(methodSigData, []byte{0xd2, 0x04, 0xc4, 0x5e}):
 		// Decode safeMint(address to, string memory uri) -- Signature: 0xd204c45e
-		if uri, ok := inputsMap["uri"].(string); ok && uri != ""  {
+		if uri, ok := inputsMap["uri"].(string); ok && uri != "" {
 			createPayload(*addr, "safeMint", uri, nil, "erc-721")
 		}
 
@@ -2703,7 +2706,6 @@ func initDecoding() {
 	// create pubsub client once to optimise operations.
 	initPubSubClient()
 }
-
 
 func initPubSubClient() {
 	// create pubsub client once to optimise operations.
