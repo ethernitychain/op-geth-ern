@@ -102,9 +102,11 @@ var (
 	errInvalidOldChain      = errors.New("invalid old chain")
 	errInvalidNewChain      = errors.New("invalid new chain")
 
-	pubSubClient *pubsub.Client
-	contractABI  abi.ABI
-	once         sync.Once
+	pubSubClient  *pubsub.Client
+	contractABI   abi.ABI
+	onceABI       sync.Once
+	oncePubSub    sync.Once
+	onceHeartbeat sync.Once
 )
 
 const (
@@ -1363,7 +1365,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Check if DISABLE_DECODING environment variable is not true
 	disableDecoding := os.Getenv("DISABLE_DECODING")
 	if disableDecoding != "true" {
-		initDecoding()
+		bc.initDecoding()
 		go func() {
 			// Process transactions
 			for i, tx := range block.Transactions() {
@@ -2671,45 +2673,113 @@ func createPayload(addr common.Address, method string, uri string, tokenIDs []*b
 
 // publishMessage publishes a message to a Google Pub/Sub topic.
 func publishMessage(msg string) error {
-
 	ctx := context.Background()
+
 	topicID := os.Getenv("PUBSUB_TOPIC_ID")
 	if topicID == "" {
-		return fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
+		err := fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
+		log.Error(err.Error())
+		return err
 	}
 
 	client := pubSubClient
+	if client == nil {
+		err := fmt.Errorf("pubSubClient is nil; skipping operation")
+		log.Error(err.Error())
+		return err
+	}
 
 	t := client.Topic(topicID)
-	payloadBytes := []byte(msg)
+	if t == nil {
+		err := fmt.Errorf("topic %s does not exist", topicID)
+		log.Error(err.Error())
+		return err
+	}
 
+	payloadBytes := []byte(msg)
 	result := t.Publish(ctx, &pubsub.Message{
 		Data: payloadBytes,
 	})
 
 	id, err := result.Get(ctx)
 	if err != nil {
-		log.Error("pubsub: result.Get:", "error", err)
+		log.Error("pubsub: result.Get error", "error", err)
 		return fmt.Errorf("pubsub: result.Get: %w", err)
-
 	}
+
 	log.Info("Published the Decoded payload", "payload ID", id)
 	log.Info("Published Payload:", msg)
 	return nil
 }
 
-func initDecoding() {
+func (bc *BlockChain) initDecoding() {
 
 	// Read contractABI once to optimise I/O operations, the ABI is initialized only once
-	once.Do(initContractABI)
+	onceABI.Do(initContractABI)
 
 	// create pubsub client once to optimise operations.
 	initPubSubClient()
+
+	// Start heartbeat child thread to send heartbeat every X minutes
+	bc.initHeartbeat()
+}
+
+func (bc *BlockChain) initHeartbeat() {
+	// Ensure the heartbeat is started only once.
+	onceHeartbeat.Do(func() {
+		go bc.startHeartbeat()
+	})
+}
+
+// startHeartbeat initializes and sends a heartbeat message every X minutes.
+func (bc *BlockChain) startHeartbeat() {
+	bc.sendHeartbeat()
+
+	minutes := 30;
+
+	ticker := time.NewTicker(time.Duration(minutes) * time.Minute)
+	defer ticker.Stop()
+
+    for range ticker.C {
+        if os.Getenv("DISABLE_DECODING") != "true" {
+            bc.sendHeartbeat()
+        } else {
+            log.Info("Heartbeat not sent as decoding is disabled")
+        }
+    }
+}
+
+// sendHeartbeat sends a heartbeat message to the Pub/Sub topic.
+func (bc *BlockChain) sendHeartbeat() {
+	currentBlock := bc.currentBlock.Load()
+
+	// Access the block number
+	blockNumber := currentBlock.Number
+
+	heartbeat := struct {
+		Type        string `json:"type"`
+		Time        string `json:"time"`
+		BlockNumber string `json:"blockNumber"`
+	}{
+		Type:        "heartbeat -- I'm alive",
+		Time:        fmt.Sprintf("%d", time.Now().Unix()),
+		BlockNumber: blockNumber.String(),
+	}
+
+	payloadBytes, err := json.Marshal(heartbeat)
+	if err != nil {
+		log.Error("Failed to marshal heartbeat", "error", err)
+		return
+	}
+
+	if err := publishMessage(string(payloadBytes)); err != nil {
+		log.Error("Failed to publish heartbeat", "error", err)
+	}
 }
 
 func initPubSubClient() {
 	// create pubsub client once to optimise operations.
-	once.Do(func() {
+	oncePubSub.Do(func() {
 		var err error
 		pubSubClient, err = createPubSubClient()
 		if err != nil {
@@ -2725,21 +2795,28 @@ func createPubSubClient() (*pubsub.Client, error) {
 
 	projectID := os.Getenv("PUBSUB_PROJECT_ID")
 	if projectID == "" {
-		return nil, fmt.Errorf("environment variable PUBSUB_PROJECT_ID is not set")
+		err := fmt.Errorf("environment variable PUBSUB_PROJECT_ID is not set")
+		log.Error(err.Error())
+		return nil, err
 	}
 
 	topicID := os.Getenv("PUBSUB_TOPIC_ID")
 	if topicID == "" {
-		return nil, fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
+		err := fmt.Errorf("environment variable PUBSUB_TOPIC_ID is not set")
+		log.Error(err.Error())
+		return nil, err
 	}
 
 	credentialPath := os.Getenv("PUBSUB_CREDENTIAL_PATH")
 	if credentialPath == "" {
-		return nil, fmt.Errorf("environment variable PUBSUB_CREDENTIAL_PATH is not set")
+		err := fmt.Errorf("environment variable PUBSUB_CREDENTIAL_PATH is not set")
+		log.Error(err.Error())
+		return nil, err
 	}
 
 	client, err := pubsub.NewClient(ctx, projectID, option.WithCredentialsFile(credentialPath))
 	if err != nil {
+		log.Error("pubsub: NewClient error", "err", err)
 		return nil, fmt.Errorf("pubsub: NewClient: %w", err)
 	}
 
