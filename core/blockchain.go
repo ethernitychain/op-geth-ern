@@ -27,6 +27,7 @@ import (
 	"math/big"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2735,18 +2736,28 @@ func (bc *BlockChain) initHeartbeat() {
 func (bc *BlockChain) startHeartbeat() {
 	bc.sendHeartbeat()
 
-	minutes := 30;
+	minutesStr := os.Getenv("HEARTBEAT_INTERVAL_MINUTES")
+	if minutesStr == "" {
+		log.Error("environment variable HEARTBEAT_INTERVAL_MINUTES is not set")
+		return
+	}
+
+	minutes, err := strconv.Atoi(minutesStr)
+	if err != nil {
+		log.Error("Invalid HEARTBEAT_INTERVAL_MINUTES value", "error", err.Error())
+		return
+	}
 
 	ticker := time.NewTicker(time.Duration(minutes) * time.Minute)
 	defer ticker.Stop()
 
-    for range ticker.C {
-        if os.Getenv("DISABLE_DECODING") != "true" {
-            bc.sendHeartbeat()
-        } else {
-            log.Info("Heartbeat not sent as decoding is disabled")
-        }
-    }
+	for range ticker.C {
+		if os.Getenv("DISABLE_DECODING") != "true" {
+			bc.sendHeartbeat()
+		} else {
+			log.Info("Heartbeat not sent as decoding is disabled")
+		}
+	}
 }
 
 // sendHeartbeat sends a heartbeat message to the Pub/Sub topic.
